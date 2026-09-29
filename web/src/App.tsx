@@ -4,9 +4,9 @@ import { api, type AppState } from "./api";
 // Seam for Pendo. Novus installs the Pendo agent, which provides window.pendo
 // at runtime; this fires a Track Event for each action. No-op when the agent
 // isn't present (local dev), so the app and Playwright mocks both stay simple.
-function trackEvent(name: string) {
+function trackEvent(name: string, props?: Record<string, unknown>) {
   if (typeof window !== "undefined") {
-    window.pendo?.track?.(`demo-${name}`);
+    window.pendo?.track?.(`demo-${name}`, props);
   }
 }
 
@@ -15,12 +15,53 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const run = async (name: string, fn: () => Promise<AppState>) => {
+    const prevCounter = state.counter;
     try {
       setError(null);
-      setState(await fn());
-      trackEvent(name);
+      const newState = await fn();
+      setState(newState);
+
+      // Build action-specific metadata for Pendo Track Events
+      let props: Record<string, unknown>;
+      switch (name) {
+        case "increment":
+        case "decrement":
+          props = {
+            counter_value: newState.counter,
+            previous_value: prevCounter,
+            action: name,
+          };
+          break;
+        case "reset":
+          props = {
+            counter_value: newState.counter,
+            previous_counter_value: prevCounter,
+            action: name,
+          };
+          break;
+        case "refresh":
+          props = {
+            counter_value: newState.counter,
+            last_action: newState.lastAction,
+          };
+          break;
+        default:
+          props = { counter_value: newState.counter };
+          break;
+      }
+
+      trackEvent(name, props);
     } catch (e) {
-      setError((e as Error).message);
+      const errorMessage = (e as Error).message;
+      setError(errorMessage);
+      // Track counter action failures for Pendo analytics
+      if (typeof window !== "undefined") {
+        window.pendo?.track?.("counter_action_failed", {
+          action: name,
+          error_message: errorMessage.substring(0, 200),
+          counter_value: prevCounter,
+        });
+      }
     }
   };
 
