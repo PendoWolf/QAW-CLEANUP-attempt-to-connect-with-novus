@@ -15,51 +15,24 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const run = async (name: string, fn: () => Promise<AppState>) => {
-    const prevCounter = state.counter;
+    const previousValue = state.counter;
     try {
       setError(null);
       const newState = await fn();
       setState(newState);
-
-      // Build action-specific metadata for Pendo Track Events
-      let props: Record<string, unknown>;
-      switch (name) {
-        case "increment":
-        case "decrement":
-          props = {
-            counter_value: newState.counter,
-            previous_value: prevCounter,
-            action: name,
-          };
-          break;
-        case "reset":
-          props = {
-            counter_value: newState.counter,
-            previous_counter_value: prevCounter,
-            action: name,
-          };
-          break;
-        case "refresh":
-          props = {
-            counter_value: newState.counter,
-            last_action: newState.lastAction,
-          };
-          break;
-        default:
-          props = { counter_value: newState.counter };
-          break;
-      }
-
-      trackEvent(name, props);
+      trackEvent(name, {
+        counterValue: newState.counter,
+        previousValue,
+        lastAction: newState.lastAction,
+      });
     } catch (e) {
       const errorMessage = (e as Error).message;
       setError(errorMessage);
-      // Track counter action failures for Pendo analytics
+      // Track error event for failed counter actions
       if (typeof window !== "undefined") {
-        window.pendo?.track?.("counter_action_failed", {
+        window.pendo?.track?.("counter_action_error", {
           action: name,
-          error_message: errorMessage.substring(0, 200),
-          counter_value: prevCounter,
+          errorMessage,
         });
       }
     }
